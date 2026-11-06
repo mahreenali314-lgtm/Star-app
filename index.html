@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Star App</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #14101f; color: #fff; }
+  .box { max-width: 400px; margin: 0 auto; padding: 24px; }
+  h2 { text-align: center; }
+  input, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px;
+    border: 1px solid #444; font-size: 16px; box-sizing: border-box; }
+  input { background: #221b36; color: #fff; }
+  button { background: #7c4dff; color: #fff; border: 0; cursor: pointer; }
+  button.link { background: none; color: #b39dff; }
+  .tabs { display: flex; gap: 8px; }
+  .tabs button { background: #221b36; }
+  .tabs button.on { background: #7c4dff; }
+  #msg { color: #ff8a80; min-height: 20px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="authView" class="box">
+  <h2>Star App</h2>
+  <div class="tabs">
+    <button id="tabEmail" class="on">Email</button>
+    <button id="tabPhone">Phone</button>
+  </div>
+
+  <div id="emailForm">
+    <input id="email" type="email" placeholder="Email" autocomplete="email">
+    <input id="pass" type="password" placeholder="Password (kam se kam 8 akshar)" autocomplete="current-password">
+    <button id="emailBtn">Login</button>
+    <button id="toggleBtn" class="link">Naya account banao</button>
+  </div>
+
+  <div id="phoneForm" hidden>
+    <input id="phone" type="tel" placeholder="+91XXXXXXXXXX (country code ke saath)">
+    <button id="otpSendBtn">OTP bhejo</button>
+    <div id="otpBox" hidden>
+      <input id="otp" type="number" placeholder="OTP daalo">
+      <button id="otpVerifyBtn">Verify</button>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+  <div id="recaptcha"></div>
+</div>
+
+<div id="homeView" class="box" hidden>
+  <h2>Swagat hai!</h2>
+  <p id="who" style="text-align:center"></p>
+  <button id="logoutBtn">Logout</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
+  signInWithEmailAndPassword, signOut, RecaptchaVerifier, signInWithPhoneNumber
+} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBpa28czKuGiRD1qO8HFeMFAFFdyAITZWg",
+  authDomain: "starapp-a16e3.firebaseapp.com",
+  projectId: "starapp-a16e3",
+  storageBucket: "starapp-a16e3.firebasestorage.app",
+  messagingSenderId: "373433799821",
+  appId: "1:373433799821:web:cc9f74c7b048310db7fec4"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
+const show = (t) => { $("msg").textContent = t; };
+
+let isSignup = false;
+let confirmation = null;
+
+$("tabEmail").onclick = () => {
+  $("emailForm").hidden = false; $("phoneForm").hidden = true;
+  $("tabEmail").className = "on"; $("tabPhone").className = "";
+};
+$("tabPhone").onclick = () => {
+  $("emailForm").hidden = true; $("phoneForm").hidden = false;
+  $("tabPhone").className = "on"; $("tabEmail").className = "";
+};
+
+$("toggleBtn").onclick = () => {
+  isSignup = !isSignup;
+  $("emailBtn").textContent = isSignup ? "Sign up" : "Login";
+  $("toggleBtn").textContent = isSignup ? "Pehle se account hai?" : "Naya account banao";
+};
+
+async function createProfile(user) {
+  const pub = doc(db, "users", user.uid);
+  if (!(await getDoc(pub)).exists()) {
+    await setDoc(pub, {
+      name: "User" + user.uid.slice(0, 5),
+      createdAt: serverTimestamp()
+    });
+    await setDoc(doc(db, "users", user.uid, "private", "info"), {
+      email: user.email || null,
+      phone: user.phoneNumber || null
+    });
+  }
+}
+
+$("emailBtn").onclick = async () => {
+  const email = $("email").value.trim();
+  const pass = $("pass").value;
+  if (pass.length < 8) return show("Password kam se kam 8 akshar ka rakho");
+  try {
+    const cred = isSignup
+      ? await createUserWithEmailAndPassword(auth, email, pass)
+      : await signInWithEmailAndPassword(auth, email, pass);
+    await createProfile(cred.user);
+  } catch (e) { show(e.message); }
+};
+
+$("otpSendBtn").onclick = async () => {
+  try {
+    if (!window.rv) {
+      window.rv = new RecaptchaVerifier(auth, "recaptcha", { size: "invisible" });
+    }
+    confirmation = await signInWithPhoneNumber(auth, $("phone").value.trim(), window.rv);
+    $("otpBox").hidden = false;
+    show("OTP bhej diya");
+  } catch (e) { show(e.message); }
+};
+
+$("otpVerifyBtn").onclick = async () => {
+  try {
+    const cred = await confirmation.confirm($("otp").value.trim());
+    await createProfile(cred.user);
+  } catch (e) { show("Galat OTP"); }
+};
+
+$("logoutBtn").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, (user) => {
+  $("authView").hidden = !!user;
+  $("homeView").hidden = !user;
+  if (user) $("who").textContent = user.email || user.phoneNumber || "";
+});
+</script>
+</body>
+</html>
